@@ -9,52 +9,54 @@ pipeline {
         firstEnvVar= 'FIRST_VAR'
         secondEnvVar= 'SECOND_VAR'
         thirdEnvVar= 'THIRD_VAR'
+        JOB_URL="${JENKINS_URL}${JOB_BASE_NAME}"
+        BUILD_URL="${JOB_URL}/${BUILD_NUMBER}/"
     }
     stages {
         stage('Test'){
             when {
                 environment name: 'run_test_only', value: 'yes'
             }
-            steps{
-                sh 'cd examples/java-calculator && mvn clean integration-test'
+            steps {
+                withDockerContainer(image:'maven:3.5.3-jdk-8-alpine', args:'-v $HOME/.m2:/var/jenkins_home/.m2 -u 1000 ') {
+                    sh 'mvn -B -X -e -Duser.home=/var/jenkins_home clean integration-test -f examples/java-calculator/pom.xml'
+                }
             }
         }
 
         stage ('Run demo parallel stages') {
-        steps {
-        parallel(
-        "Parallel stage #1":
-                  {
-                  //running a script instead of DSL. In this case to run an if/else
-                  script{
-                    if (env.run_test_only =='yes')
-                        {
-                        echo env.firstEnvVar
+            steps {
+                parallel (
+                    "Parallel stage #1": {
+                        //running a script instead of DSL. In this case to run an if/else
+                        script{
+                            if (env.run_test_only =='yes') {
+                                echo env.firstEnvVar
+                            } else {
+                                echo env.secondEnvVar
+                            }
                         }
-                    else
-                        {
-                        echo env.secondEnvVar
-                        }
-                  }
-         },
-        "Parallel stage #2":{
-                echo "${thirdEnvVar}"
-                }
+                    },
+                    "Parallel stage #2": {
+                        echo "${thirdEnvVar}"
+                    }
                 )
-
-             }
+            }
         }
-
-
     }
 
     post {
+        always {
+            junit '**/java-calculator/target/surefire-reports/*.xml'
+        //    cucumber 'fileIncludePattern: **/java-calculator/target/cucumber-report.json, sortingMethod: ALPHABETICAL'
+        }
         success {
-        //node('node1'){
+        //node('node1') {
 
             echo "Test succeeded"
             script {
-
+                cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
+                //publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
                 mail(bcc: '',
                      body: "Run ${JOB_NAME}-#${BUILD_NUMBER} succeeded. To get more details, visit the build results page: ${BUILD_URL}.",
                      cc: '',
@@ -62,17 +64,16 @@ pipeline {
                      replyTo: '',
                      subject: "${JOB_NAME} ${BUILD_NUMBER} succeeded",
                      to: env.notification_email)
-                     if (env.archive_war =='yes')
-                     {
-                        archiveArtifacts '**/java-calculator-*-SNAPSHOT.jar'
-                      }
-                      cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
-            //publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
+                if (env.archive_war =='yes') {
+                    archiveArtifacts '**/java-calculator*.jar'
+                }
             }
         //}
         }
         failure {
             echo "Test failed"
+            cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
+            //publishHTML([allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/tester/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
             mail(bcc: '',
                 body: "Run ${JOB_NAME}-#${BUILD_NUMBER} succeeded. To get more details, visit the build results page: ${BUILD_URL}.",
                  cc: '',
@@ -80,10 +81,6 @@ pipeline {
                  replyTo: '',
                  subject: "${JOB_NAME} ${BUILD_NUMBER} failed",
                  to: env.notification_email)
-                 cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
-
-            //publishHTML([allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/tester/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
         }
     }
-
 }

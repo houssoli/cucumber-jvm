@@ -14,7 +14,8 @@ pipeline {
     environment {
         node= '1.1.1.1'
         oprofile_report_name= 'report.txt'
-
+        JOB_URL="${JENKINS_URL}${JOB_BASE_NAME}"
+        BUILD_URL="${JOB_URL}/${BUILD_NUMBER}/"
     }
 
     stages {
@@ -34,7 +35,9 @@ pipeline {
                 environment name: 'run_test_only', value: 'no'
             }
             steps{
-                sh 'mvn test'
+                withDockerContainer(image:'maven:3.5.3-jdk-8-alpine', args:'-v $HOME/.m2:/root/.m2') {
+                    sh 'mvn -B -X -e test -f examples/java8-calculator/pom.xml'
+                }
             }
         }
 
@@ -91,12 +94,20 @@ pipeline {
     }
 
     post {
+        always {
+            junit '**/java8-calculator/target/surefire-reports/*.xml'
+            cucumber 'fileIncludePattern: **/java8-calculator/target/cucumber-report.json, sortingMethod: ALPHABETICAL'
+        }
         success {
         //node('node1'){
 
             echo "Test succeeded"
             script {
-
+                if (env.enable_oprofile =='yes') {
+                    //archiveArtifacts artifacts: "${analyzed_component}-${oprofile_report_name}"
+                }
+                //cucumber fileIncludePattern: '**/java8-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
+                //publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
                 mail(bcc: '',
                      body: "Run ${JOB_NAME}-#${BUILD_NUMBER} succeeded. To get more details, visit the build results page: ${BUILD_URL}.",
                      cc: '',
@@ -104,17 +115,13 @@ pipeline {
                      replyTo: '',
                      subject: "${JOB_NAME} ${BUILD_NUMBER} succeeded",
                      to: env.notification_email)
-                if (env.enable_oprofile =='yes')
-                     {
-                        //archiveArtifacts artifacts: "${analyzed_component}-${oprofile_report_name}"
-                      }
-
-            //publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
             }
         //}
         }
         failure {
             echo "Test failed"
+            //cucumber fileIncludePattern: '**/java8-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
+            //publishHTML([allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/tester/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
             mail(bcc: '',
                 body: "Run ${JOB_NAME}-#${BUILD_NUMBER} succeeded. To get more details, visit the build results page: ${BUILD_URL}.",
                  cc: '',
@@ -122,7 +129,6 @@ pipeline {
                  replyTo: '',
                  subject: "${JOB_NAME} ${BUILD_NUMBER} failed",
                  to: env.notification_email)
-            //publishHTML([allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/tester/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
         }
     }
 
