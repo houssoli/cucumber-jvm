@@ -10,7 +10,21 @@ pipeline {
         secondEnvVar= 'SECOND_VAR'
         thirdEnvVar= 'THIRD_VAR'
     }
+    //Retrieve the maven tools declared in the Jenkins "Global Tool Configuration"
+    tools {
+        maven 'maven3'
+        //jdk 'oracle-jdk-8u192'
+    }
     stages {
+        //Check some env variables
+        stage('ShowInitVars') {
+            steps {
+                sh '''
+                    echo "PATH = ${PATH}"
+                    echo "M2_HOME = ${M2_HOME}"
+                '''
+            }
+        }
         stage('Test'){
             when {
                 environment name: 'run_test_only', value: 'yes'
@@ -49,12 +63,17 @@ pipeline {
     }
 
     post {
+        always {
+            junit '**/java-calculator/target/surefire-reports/*.xml'
+        //    cucumber 'fileIncludePattern: **/java-calculator/target/cucumber-report.json, sortingMethod: ALPHABETICAL'
+        }
         success {
-        //node('node1'){
+        //node('node1') {
 
             echo "Test succeeded"
             script {
-
+                cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
+                //publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
                 mail(bcc: '',
                      body: "Run ${JOB_NAME}-#${BUILD_NUMBER} succeeded. To get more details, visit the build results page: ${BUILD_URL}.",
                      cc: '',
@@ -62,17 +81,16 @@ pipeline {
                      replyTo: '',
                      subject: "${JOB_NAME} ${BUILD_NUMBER} succeeded",
                      to: env.notification_email)
-                     if (env.archive_war =='yes')
-                     {
-                        archiveArtifacts '**/java-calculator-*-SNAPSHOT.jar'
-                      }
-                      cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
-            //publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
+                if (env.archive_war =='yes') {
+                    archiveArtifacts '**/java-calculator*.jar'
+                }
             }
         //}
         }
         failure {
             echo "Test failed"
+            cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
+            //publishHTML([allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/tester/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
             mail(bcc: '',
                 body: "Run ${JOB_NAME}-#${BUILD_NUMBER} succeeded. To get more details, visit the build results page: ${BUILD_URL}.",
                  cc: '',
@@ -80,10 +98,6 @@ pipeline {
                  replyTo: '',
                  subject: "${JOB_NAME} ${BUILD_NUMBER} failed",
                  to: env.notification_email)
-                 cucumber fileIncludePattern: '**/java-calculator/target/cucumber-report.json', sortingMethod: 'ALPHABETICAL'
-
-            //publishHTML([allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true, reportDir: '/home/tester/reports', reportFiles: 'reports.html', reportName: 'Performance Test Report', reportTitles: ''])
         }
     }
-
 }
